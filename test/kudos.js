@@ -2,7 +2,7 @@ const Kudos = artifacts.require("Kudos");
 
 contract("KudosTest", async(accounts) => {
   let priceFinney = 2;
-  let priceWeiBN = web3.toBigNumber(web3.toWei(priceFinney, 'finney'));
+  let priceWeiBN = web3.utils.toBN(web3.utils.toWei(priceFinney.toString(), 'finney'));
   let numClonesAllowed = 10;
   let tokenURI = 'http://example.com';
 
@@ -18,7 +18,13 @@ contract("KudosTest", async(accounts) => {
     await instance.mint(accounts[1], priceFinney, numClonesAllowed, tokenURI, {"from": accounts[0]});
     let kudos_id = (await instance.getLatestId()).toNumber();
 
-    let kudos = (await instance.getKudosById(kudos_id)).map(x => x.toNumber());
+    // kinda hacky but we get the return var back twice
+    const retreivedKudos = Object.values(await instance.getKudosById(kudos_id))
+    let kudos = retreivedKudos.map((x, i, arr) => {
+      if (i < (arr.length / 2)) return null
+      return x.toNumber()
+    });
+    kudos = kudos.filter(k => k !== null)
     let expected_kudos = [priceFinney, numClonesAllowed, 0, kudos_id];
     assert.deepEqual(kudos, expected_kudos);
     assert.equal(await instance.tokenURI(kudos_id), tokenURI);
@@ -58,11 +64,11 @@ contract("KudosTest", async(accounts) => {
     let kudos_id = (await instance.getLatestId()).toNumber();
 
     let numClones = 1;
-    let contractOwnerBalance = web3.eth.getBalance(accounts[0]);
-    let tokenOwnerBalance = web3.eth.getBalance(accounts[1]);
-    let cloneSenderBalance = web3.eth.getBalance(accounts[2]);
+    let contractOwnerBalance = web3.utils.toBN(await web3.eth.getBalance(accounts[0]));
+    let tokenOwnerBalance = web3.utils.toBN(await web3.eth.getBalance(accounts[1]));
+    let cloneSenderBalance = web3.utils.toBN(await web3.eth.getBalance(accounts[2]));
 
-    let txid = await instance.clone(accounts[3], kudos_id, numClones, {"from": accounts[2], "value": web3.toWei(4, 'finney')});
+    let txid = await instance.clone(accounts[3], kudos_id, numClones, {"from": accounts[2], "value": web3.utils.toWei('4', 'finney')});
     // console.log(txid)
     let tx = web3.eth.getTransaction(txid['tx']);
     // console.log(tx);
@@ -73,7 +79,12 @@ contract("KudosTest", async(accounts) => {
     assert.equal(cloned_id, kudos_id + 1);
 
     // Check that the return kudos matches what we expect
-    let cloned_kudos = (await instance.getKudosById(cloned_id)).map(x => x.toNumber());
+    const retreivedKudos = Object.values(await instance.getKudosById(cloned_id))
+    let cloned_kudos = retreivedKudos.map((x, i, arr) => {
+      if (i < (arr.length / 2)) return null
+      return x.toNumber()
+    });
+    cloned_kudos = cloned_kudos.filter(k => k !== null)
     let expected_cloned_kudos = [priceFinney, 0, 0, kudos_id];
     assert.deepEqual(cloned_kudos, expected_cloned_kudos);
 
@@ -88,22 +99,24 @@ contract("KudosTest", async(accounts) => {
     let feePercentage = await instance.cloneFeePercentage();
 
     // Check that the cloneFeePercentage went to the contract owner
-    let contractOwnerFee = priceWeiBN.times(feePercentage).div(web3.toBigNumber(100));
-    let newContractOwnerBalance = web3.eth.getBalance(accounts[0]);
-    let ownerFeeCheck = (newContractOwnerBalance.minus(contractOwnerBalance)).eq(contractOwnerFee);
+    let contractOwnerFee = priceWeiBN.mul(feePercentage).div(web3.utils.toBN('100'));
+    let newContractOwnerBalance = web3.utils.toBN(await web3.eth.getBalance(accounts[0]));
+    let ownerFeeCheck = (newContractOwnerBalance.sub(web3.utils.toBN(contractOwnerBalance))).eq(contractOwnerFee);
     assert.ok(ownerFeeCheck);
 
     // Check that the tokenOwnerFee over to the original token owner
-    let tokenOwnerFee = priceWeiBN.minus(contractOwnerFee);
-    let newTokenOwnerBalance = web3.eth.getBalance(accounts[1]);
-    let tokenFeeCheck = (newTokenOwnerBalance.minus(tokenOwnerBalance)).eq(tokenOwnerFee);
+    let tokenOwnerFee = priceWeiBN.sub(contractOwnerFee);
+    let newTokenOwnerBalance = web3.utils.toBN(await web3.eth.getBalance(accounts[1]));
+    let tokenFeeCheck = (newTokenOwnerBalance.sub(tokenOwnerBalance)).eq(tokenOwnerFee);
     assert.ok(tokenOwnerFee);
 
     // Check that the remaining funds (if any) went back to msg.sender
-    let gasCost = web3.toBigNumber(txid['receipt']['gasUsed']).times(tx['gasPrice'])
-    let allFees = contractOwnerFee.plus(tokenOwnerFee);
-    let cloneSenderBalanceMinusFeesMinusGas = cloneSenderBalance.minus(allFees).minus(gasCost);
-    let newCloneSenderBalance = web3.eth.getBalance(accounts[2]);
+    let txInfo = await web3.eth.getTransaction(txid.receipt.transactionHash)
+    let gasPrice = web3.utils.toBN(txInfo.gasPrice)
+    let gasCost = web3.utils.toBN(txid['receipt']['gasUsed'].toString()).mul(gasPrice)
+    let allFees = contractOwnerFee.add(tokenOwnerFee);
+    let cloneSenderBalanceMinusFeesMinusGas = cloneSenderBalance.sub(allFees).sub(gasCost);
+    let newCloneSenderBalance = web3.utils.toBN(await web3.eth.getBalance(accounts[2]));
 
     // console.log('cloneSender info:');
     // let params = {
@@ -130,7 +143,13 @@ contract("KudosTest", async(accounts) => {
 
     let newPriceFinney = 5;
     await instance.setPrice(kudos_id, newPriceFinney);
-    let kudos = (await instance.getKudosById(kudos_id)).map(x => x.toNumber());
+
+    const retreivedKudos = Object.values(await instance.getKudosById(kudos_id))
+    let kudos = retreivedKudos.map((x, i, arr) => {
+      if (i < (arr.length / 2)) return null
+      return x.toNumber()
+    });
+    kudos = kudos.filter(k => k !== null)
     assert.equal(kudos[0], newPriceFinney);
   });
 
@@ -141,9 +160,9 @@ contract("KudosTest", async(accounts) => {
     let kudos_id = (await instance.getLatestId()).toNumber();
 
     let startSupply = (await instance.totalSupply()).toNumber();
-    let originalBalance = web3.eth.getBalance(accounts[0]);
+    let originalBalance = await web3.eth.getBalance(accounts[0]);
     let numClones = 5;
-    let msgValue = web3.toWei(priceFinney * numClones, 'finney');
+    let msgValue = web3.utils.toWei((priceFinney * numClones).toString(), 'finney');
     await instance.clone(accounts[1], kudos_id, numClones, {"from": accounts[1], "value": msgValue});
     let cloned_id = (await instance.getLatestId()).toNumber();
     let endSupply = (await instance.totalSupply()).toNumber();
@@ -163,14 +182,14 @@ contract("KudosTest", async(accounts) => {
     let kudos_id = (await instance.getLatestId()).toNumber();
 
     let numClones = 1;
-    await instance.clone(accounts[4], kudos_id, numClones, {"from": accounts[3], "value": web3.toWei(priceFinney, 'finney')});
+    await instance.clone(accounts[4], kudos_id, numClones, {"from": accounts[3], "value": web3.utils.toWei(priceFinney.toString(), 'finney')});
     let startSupply = (await instance.totalSupply()).toNumber();
     // Balance of account[4] should be 1
     assert.equal(await instance.balanceOf(accounts[3]), 1)
 
     // Burn the new clone
     let clone_id = (await instance.getLatestId()).toNumber();
-    await instance.burn(accounts[4], clone_id);
+    await instance.burn(clone_id);
 
     // Balance of accounts[4] should be 0
     assert.equal(await instance.balanceOf(accounts[4]), 0)
@@ -180,11 +199,16 @@ contract("KudosTest", async(accounts) => {
     assert.equal(endSupply, startSupply - 1);
 
     // The kudos that was burned should be all 0's because it was deleted
-    let cloned_kudos = (await instance.getKudosById(clone_id)).map(x => x.toNumber());
+    const retreivedKudos = Object.values(await instance.getKudosById(clone_id))
+    let cloned_kudos = retreivedKudos.map((x, i, arr) => {
+      if (i < (arr.length / 2)) return null
+      return x.toNumber()
+    });
+    cloned_kudos = cloned_kudos.filter(k => k !== null)
     assert.deepEqual(cloned_kudos, [0, 0, 0, 0]);
 
     // Clone a new Kudos, make sure the kudos_id and totalSupply are correct
-    await instance.clone(accounts[4], kudos_id, numClones, {"from": accounts[3], "value": web3.toWei(priceFinney, 'finney')});
+    await instance.clone(accounts[4], kudos_id, numClones, {"from": accounts[3], "value": web3.utils.toWei(priceFinney.toString(), 'finney')});
     new_clone_id = (await instance.getLatestId()).toNumber();
     newSupply = (await instance.totalSupply()).toNumber();
     // The id sould always increment, even if a kudos is burned
@@ -201,7 +225,7 @@ contract("KudosTest", async(accounts) => {
 
     let numClones = 1;
     try {
-      await instance.clone(accounts[1], kudos_id, numClones, {"from": accounts[1], "value": web3.toWei(priceFinney - 1, 'finney')});
+      await instance.clone(accounts[1], kudos_id, numClones, {"from": accounts[1], "value": web3.utils.toWei((priceFinney - 1).toString(), 'finney')});
       assert.fail();
     } catch (err) {
       assert.ok(err);
@@ -216,7 +240,7 @@ contract("KudosTest", async(accounts) => {
 
     let numClones = 100;
     try {
-      await instance.clone(accounts[1], kudos_id, numClones, {"from": accounts[1], "value": web3.toWei(priceFinney, 'finney')});
+      await instance.clone(accounts[1], kudos_id, numClones, {"from": accounts[1], "value": web3.utils.toWei(priceFinney.toString(), 'finney')});
       assert.fail();
     } catch (err) {
       assert.ok(err);
@@ -230,10 +254,10 @@ contract("KudosTest", async(accounts) => {
     let kudos_id = (await instance.getLatestId()).toNumber();
 
     let numClones = 1;
-    await instance.clone(accounts[1], kudos_id, numClones, {"from": accounts[1], "value": web3.toWei(priceFinney, 'finney')});
+    await instance.clone(accounts[1], kudos_id, numClones, {"from": accounts[1], "value": web3.utils.toWei(priceFinney.toString(), 'finney')});
     let cloned_id = (await instance.getLatestId()).toNumber();
     try {
-      await instance.clone(accounts[1], cloned_id, numClones, {"from": accounts[1], "value": web3.toWei(priceFinney, 'finney')});
+      await instance.clone(accounts[1], cloned_id, numClones, {"from": accounts[1], "value": web3.utils.toWei(priceFinney.toString(), 'finney')});
       assert.fail();
     } catch (err) {
       assert.ok(err);

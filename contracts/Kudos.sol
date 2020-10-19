@@ -1,13 +1,14 @@
-pragma solidity ^0.4.24;
+/// SPDX-License-Identifier: MIT
+pragma solidity ^0.6.0;
 
-import 'openzeppelin-solidity/contracts/token/ERC721/ERC721Token.sol';
-import 'openzeppelin-solidity/contracts/ownership/Ownable.sol';
-import 'openzeppelin-solidity/contracts/math/SafeMath.sol';
+import '@openzeppelin/contracts/token/ERC721/ERC721.sol';
+import '@openzeppelin/contracts/access/Ownable.sol';
+import '@openzeppelin/contracts/math/SafeMath.sol';
 
 /// @title Kudos
 /// @author Jason Haas <jasonrhaas@gmail.com>
 /// @notice Kudos ERC721 interface for minting, cloning, and transferring Kudos tokens.
-contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
+contract Kudos is ERC721("KudosToken", "KDO"), Ownable {
     using SafeMath for uint256;
 
     struct Kudo {
@@ -44,8 +45,8 @@ contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
     /// @param _priceFinney Price of the Kudos in Finney.
     /// @param _numClonesAllowed Maximum number of times this Kudos is allowed to be cloned.
     /// @param _tokenURI A URL to the JSON file containing the metadata for the Kudos.  See metadata.json for an example.
-    /// @return the tokenId of the Kudos that has been minted.  Note that in a transaction only the tx_hash is returned.
-    function mint(address _to, uint256 _priceFinney, uint256 _numClonesAllowed, string _tokenURI) public mintable onlyOwner returns (uint256 tokenId) {
+    /// @return tokenId the tokenId of the Kudos that has been minted.  Note that in a transaction only the tx_hash is returned.
+    function mint(address _to, uint256 _priceFinney, uint256 _numClonesAllowed, string calldata _tokenURI) public mintable onlyOwner returns (uint256 tokenId) {
 
         Kudo memory _kudo = Kudo({priceFinney: _priceFinney, numClonesAllowed: _numClonesAllowed,
                                   numClonesInWild: 0, clonedFromId: 0
@@ -53,7 +54,8 @@ contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
         // The new kudo is pushed onto the array and minted
         // Note that Solidity uses 0 as a default value when an item is not found in a mapping.
 
-        tokenId = kudos.push(_kudo) - 1;
+        kudos.push(_kudo);
+        tokenId = kudos.length - 1;
         kudos[tokenId].clonedFromId = tokenId;
 
         _mint(_to, tokenId);
@@ -78,11 +80,11 @@ contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
 
         // Pay the contract owner the cloneFeePercentage amount
         uint256 contractOwnerFee = (cloningCost.mul(cloneFeePercentage)).div(100);
-        owner.transfer(contractOwnerFee);
+        payable(owner()).transfer(contractOwnerFee);
 
         // Pay the token owner the cloningCost - contractOwnerFee
         uint256 tokenOwnerFee = cloningCost.sub(contractOwnerFee);
-        ownerOf(_tokenId).transfer(tokenOwnerFee);
+        payable(ownerOf(_tokenId)).transfer(tokenOwnerFee);
 
         // Update original kudo struct in the array
         _kudo.numClonesInWild += _numClonesRequested;
@@ -97,7 +99,8 @@ contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
             _newKudo.clonedFromId = _tokenId;
 
             // Note that Solidity uses 0 as a default value when an item is not found in a mapping.
-            uint256 newTokenId = kudos.push(_newKudo) - 1;
+            kudos.push(_newKudo);
+            uint256 newTokenId = kudos.length - 1;
 
             // Mint the new kudos to the _to account
             _mint(_to, newTokenId);
@@ -112,9 +115,8 @@ contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
 
 
     /// @dev burn(): Burn Kudos token.
-    /// @param _owner The owner address of the token to burn.
     /// @param _tokenId The Kudos ID to be burned.
-    function burn(address _owner, uint256 _tokenId) public onlyOwner {
+    function burn(uint256 _tokenId) public onlyOwner {
         Kudo memory _kudo = kudos[_tokenId];
         uint256 gen0Id = _kudo.clonedFromId;
         if (_tokenId != gen0Id) {
@@ -123,7 +125,7 @@ contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
             kudos[gen0Id] = _gen0Kudo;
         }
         delete kudos[_tokenId];
-        _burn(_owner, _tokenId);
+        _burn(_tokenId);
     }
 
     /// @dev setCloneFeePercentage(): Update the Kudos clone fee percentage.  Upon cloning a new kudos,
@@ -137,7 +139,7 @@ contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
         cloneFeePercentage = _cloneFeePercentage;
     }
 
-    /// @dev setMintable(): set the isMintable public variable.  When set to `false`, no new 
+    /// @dev setMintable(): set the isMintable public variable.  When set to `false`, no new
     ///                     kudos are allowed to be minted or cloned.  However, all of already
     ///                     existing kudos will remain unchanged.
     /// @param _isMintable flag for the mintable function modifier.
@@ -158,13 +160,16 @@ contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
     /// @dev setTokenURI(): Set an existing token URI.
     /// @param _tokenId The token id.
     /// @param _tokenURI The tokenURI string.  Typically this will be a link to a json file on IPFS.
-    function setTokenURI(uint256 _tokenId, string _tokenURI) public onlyOwner {
+    function setTokenURI(uint256 _tokenId, string calldata _tokenURI) public onlyOwner {
         _setTokenURI(_tokenId, _tokenURI);
     }
 
-    /// @dev getKudosById(): Return a Kudos struct/array given a Kudos Id. 
+    /// @dev getKudosById(): Return a Kudos struct/array given a Kudos Id.
     /// @param _tokenId The Kudos Id.
-    /// @return the Kudos struct, in array form.
+    /// @return priceFinney
+    /// @return numClonesAllowed
+    /// @return numClonesInWild
+    /// @return clonedFromId the Kudos struct, in array form.
     function getKudosById(uint256 _tokenId) view public returns (uint256 priceFinney,
                                                                 uint256 numClonesAllowed,
                                                                 uint256 numClonesInWild,
@@ -179,18 +184,18 @@ contract Kudos is ERC721Token("KudosToken", "KDO"), Ownable {
         clonedFromId = _kudo.clonedFromId;
     }
 
-    /// @dev getNumClonesInWild(): Return a Kudos struct/array given a Kudos Id. 
+    /// @dev getNumClonesInWild(): Return a Kudos struct/array given a Kudos Id.
     /// @param _tokenId The Kudos Id.
-    /// @return the number of cloes in the wild
+    /// @return numClonesInWild the number of cloes in the wild
     function getNumClonesInWild(uint256 _tokenId) view public returns (uint256 numClonesInWild)
-    {   
+    {
         Kudo memory _kudo = kudos[_tokenId];
 
         numClonesInWild = _kudo.numClonesInWild;
     }
 
     /// @dev getLatestId(): Returns the newest Kudos Id in the kudos array.
-    /// @return the latest kudos id.
+    /// @return tokenId the latest kudos id.
     function getLatestId() view public returns (uint256 tokenId)
     {
         if (kudos.length == 0) {
