@@ -37,7 +37,7 @@ module.exports = {
            "https://dai.poa.network")
       },
       network_id: 100,
-      from: '0xB26B5a7C4b35efA73E2343a086AF55b459CebAB0',
+      from: '0x6239ff1040e412491557a7a02b2cbcc5ae85dc8f',
       gasPrice: 1000000000
     },
 
